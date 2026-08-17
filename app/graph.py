@@ -50,19 +50,39 @@ def validator_node(state: AgentState) -> Dict[str, Any]:
 
     return {"validation_passed": True, "validation_error": ""}
 
-def publisher_node(state: AgentState) -> Dict[str, Any]:
-    data = state["input_data"]
-    res = publish_to_woocommerce(
-        product_name=data["product_name"],
-        description=state["generated_description"],
-        price=data["price"],
-        category_id=data["category_id"],
-        image_url=data.get("image_url"),
-        sku=data.get("sku", ""),
+def publisher_node(state: AgentState) -> dict[str, Any]:
+    raw_desc = state.get("generated_description", "")
+    input_data = state.get("input_data", {})
+
+    desc_text = ""
+    # Check if raw_desc is a dictionary before accessing dictionary keys
+    if isinstance(raw_desc, dict):
+        desc_text = str(raw_desc.get("description", ""))
+        gen_sku = raw_desc.get("sku")
+        if gen_sku and isinstance(input_data, dict) and not input_data.get("sku"):
+            input_data["sku"] = gen_sku
+    else:
+        desc_text = str(raw_desc)
+
+    product_name = input_data.get("product_name", "") if isinstance(input_data, dict) else ""
+    price = input_data.get("price", "0") if isinstance(input_data, dict) else "0"
+    category_id = input_data.get("category_id", 0) if isinstance(input_data, dict) else 0
+    sku = input_data.get("sku", "") if isinstance(input_data, dict) else ""
+    image_url = input_data.get("image_url") if isinstance(input_data, dict) else None
+
+    result = publish_to_woocommerce(
+        product_name=product_name,
+        description=desc_text,
+        price=price,
+        category_id=category_id,
+        sku=sku,
+        image_url=image_url
     )
+
     return {
-        "wordpress_product_id": res["id"],
-        "wordpress_product_url": res["url"]
+        "wordpress_product_id": result["id"],
+        "wordpress_product_url": result["url"],
+        "generated_description": desc_text
     }
 
 def routing_logic(state: AgentState) -> str:

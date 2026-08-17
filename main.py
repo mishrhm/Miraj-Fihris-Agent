@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from app.schemas import ProductRequest, AgentState
+from app.schemas import ProductRequest, ProductResponse, AgentState
 from app.graph import fihris_agent
 from app.config import settings
 
@@ -13,7 +13,7 @@ app = FastAPI(
 def health_check():
     return {"status": "active", "agent": "Miraj Fihris Agent", "organization": "MIRAJ Co."}
 
-@app.post("/api/v1/publish-product")
+@app.post("/api/v1/publish-product", response_model=ProductResponse)
 async def publish_product(req: ProductRequest):
     initial_state: AgentState = {
         "input_data": req.model_dump(),
@@ -26,12 +26,24 @@ async def publish_product(req: ProductRequest):
 
     try:
         final_state = fihris_agent.invoke(initial_state)
-        return {
-            "status": "success",
-            "wordpress_product_id": final_state["wordpress_product_id"],
-            "wordpress_product_url": final_state["wordpress_product_url"],
-            "generated_description": final_state["generated_description"]
-        }
+
+        # Safely extract plain text description if returned as a dict from state
+        raw_desc = final_state.get("generated_description", "")
+        if isinstance(raw_desc, dict):
+            desc_text = raw_desc.get("description", "")
+        else:
+            desc_text = str(raw_desc)
+
+        # Retrieve final SKU from the graph execution state
+        sku_val = final_state.get("input_data", {}).get("sku")
+
+        return ProductResponse(
+            status="success",
+            wordpress_product_id=final_state["wordpress_product_id"],
+            wordpress_product_url=final_state["wordpress_product_url"],
+            generated_description=desc_text,
+            sku=sku_val
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

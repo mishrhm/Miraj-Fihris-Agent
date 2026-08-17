@@ -29,6 +29,14 @@ class ProductRequest(BaseModel):
         }
     )
     
+
+class ProductResponse(BaseModel):
+    status: str
+    wordpress_product_id: int
+    wordpress_product_url: str
+    generated_description: str
+    sku: Optional[str] = None
+
     
 class AgentState(TypedDict):
     """State dictionary passed through LangGraph nodes."""
