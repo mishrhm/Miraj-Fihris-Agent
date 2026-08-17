@@ -23,7 +23,7 @@ class ProductRequest(BaseModel):
                 "category_id": 121,
                 "price": "145.00",
                 "focus_keyphrase": "Self-Closing Timer Faucet",
-                "image_url": "https://www.maat.ae/wp-content/uploads/timer-faucet-bpt09.jpg",
+                "image_url": "https://maat.ae/wp-content/uploads/2025/09/BPT-08-1.webp",
                 "sku": "MAAT-BPT09-TAP"
             }
         }
