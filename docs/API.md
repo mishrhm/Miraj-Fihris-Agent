@@ -26,7 +26,7 @@ Generates SEO-validated product copy, uploads any local images, and publishes a
 | `focus_keyphrase` | string | yes | Primary SEO keyphrase. Keep to ≤4 words — checked pre-flight. Must not have been used on a prior product — also checked pre-flight (`data/keyphrase_history.json`) |
 | `image_url` | string | no | Direct URL to an already-hosted image. Ignored if `image_paths` is also given. |
 | `image_paths` | string[] | no | **Local file paths** to upload to the WP media library before publishing. First path = primary product image, rest = gallery. Takes priority over `image_url`. |
-| `sku` | string | no | Explicit SKU. If omitted, Gemini derives one (`MAAT-{...}` style). |
+| `sku` | string | no | Explicit SKU. If omitted, Gemini derives one (`MAAT-{...}` style). Also doubles as the product's model number and is published as-is into WooCommerce's `short_description` field (e.g. `"FD15-02"`). |
 
 ### Response body (`ProductResponse`, `200`)
 

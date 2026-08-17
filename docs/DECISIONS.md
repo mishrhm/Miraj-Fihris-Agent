@@ -232,3 +232,22 @@ entries for every failed validation attempt.
 exactly once, before the graph is invoked at all, and stores the resulting URLs
 in `input_data["image_url"]` (primary) / `input_data["gallery_images"]` (rest).
 The graph itself never re-uploads.
+
+---
+
+## 14. SKU also published as WooCommerce `short_description`
+
+**Context:** the store's product theme displays `short_description` right under
+the title, and the user wanted the model number visible there (e.g. `FD15-01M`
+for the floor drain) rather than only buried in the SKU field.
+
+**Decision:** the SKU already *is* the model number in this catalog (see
+`app/prompt.py`'s SKU generation rule), so no new input field was added.
+`publish_to_woocommerce()` in `app/woocommerce.py` sets
+`payload["short_description"]` to the raw finalized SKU string — no label, no
+extra text, just the value itself (e.g. `"FD15-02"`, not `"Model Number:
+FD15-02"` or `"SKU: FD15-02"`).
+
+**Why it matters:** if a future request adds a genuinely separate "model
+number" concept distinct from SKU, this mapping needs revisiting — right now
+they're treated as the same value on purpose.
