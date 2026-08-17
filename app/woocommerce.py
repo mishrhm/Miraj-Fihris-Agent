@@ -190,6 +190,12 @@ def publish_to_woocommerce(
         "description": clean_description,
     }
 
+    # The SKU doubles as the product's model number; surface it in the
+    # short description since WooCommerce themes often display that field
+    # right under the product title, above the fold.
+    if sku:
+        payload["short_description"] = str(sku)
+
     # Enquiry-only listings (no e-commerce checkout) omit regular_price
     # entirely rather than sending "0", which would show as free.
     if clean_price:
