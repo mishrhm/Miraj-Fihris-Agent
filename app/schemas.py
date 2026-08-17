@@ -10,8 +10,9 @@ class ProductRequest(BaseModel):
     additional_category_ids: Optional[List[int]] = Field(None, description="Extra WooCommerce category IDs to tag alongside category_id (e.g. a parent category)")
     price: Optional[str] = Field(None, description="Retail price in AED. Omit for enquiry-only listings (no price shown, e.g. B2B catalog items)")
     focus_keyphrase: str = Field(..., description="Primary focus keyphrase for SEO")
+    brand: Optional[str] = Field(None, description="Brand name to attach to the product (created in the WooCommerce Brands taxonomy if it doesn't already exist)")
     image_url: Optional[str] = Field(None, description="Direct URL to an already-hosted product image")
-    image_paths: Optional[List[str]] = Field(None, description="Local file paths to upload to the WordPress media library before publishing. First path becomes the primary product image; the rest become gallery images. Takes priority over image_url if both are given.")
+    image_paths: Optional[List[str]] = Field(None, description="Local file paths to upload to the WordPress media library before publishing. First path becomes the primary product image; the rest become gallery images. Takes priority over image_url if both are given. Only clean product photos belong here: must be WebP, under 35KB, and exactly 1000x1000px, or the upload is rejected. Do not include marketing images (banners, spec sheets, lifestyle shots with text or colorful backgrounds) -- those are for product content generation and internal sharing only, never for upload.")
     sku: Optional[str] = Field(None, description="Explicit SKU (if omitted, Gemini generates one)")
 
     model_config = ConfigDict(
@@ -22,6 +23,7 @@ class ProductRequest(BaseModel):
                 "category_id": 121,
                 "price": "145.00",
                 "focus_keyphrase": "Self-Closing Timer Faucet",
+                "brand": "MAAT",
                 "image_url": "https://maat.ae/wp-content/uploads/2025/09/BPT-08-1.webp",
                 "sku": "MAAT-BPT09-TAP"
             }

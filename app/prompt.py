@@ -6,6 +6,7 @@ Product Name: {name}
 Raw Specifications: {specs}
 Focus Keyphrase: {fk}
 Provided SKU: {sku}
+Brand: {brand}
 Has Product Image: {has_image}
 Internal Link Target (a real, live page on maat.ae): {internal_link_url}
 
@@ -28,6 +29,17 @@ STRICT CONSTRAINTS & FORMATTING RULES:
      "self-closing-timer-faucet-bpt-09").
    - "image_alt": Alt text for the product's main image containing the Focus Keyphrase or a
      close synonym. Only meaningful if "Has Product Image" is true, but always return a value.
+   - "keyphrase_synonyms": An array of 2-4 short, natural synonyms or close variants of the
+     Focus Keyphrase (e.g. for "Self-Closing Timer Faucet": ["auto-shutoff tap", "self-closing
+     basin tap", "timed faucet"]). Used to vary phrasing across the text instead of repeating
+     the exact keyphrase every time.
+   - "attributes": An array of structured product attributes parsed out of the Raw Specifications,
+     each as {{"name": "...", "value": "..."}}. Split every distinct spec (Material, Finish,
+     Mechanism, Dimensions, Flow Rate, Operating Pressure, Inlet Connection, Weight, etc.) into
+     its own entry with a short attribute name and a concise value -- do not lump multiple specs
+     into one entry. Include every meaningful spec from Raw Specifications; return at least 3
+     entries whenever the specs contain that much information. If a Brand is given above, do NOT
+     duplicate it here as an attribute -- brand is handled separately.
 
 3. NO LaTeX allowed under any circumstances. Never use symbols like $ or \\text.
 
@@ -37,9 +49,11 @@ STRICT CONSTRAINTS & FORMATTING RULES:
 
 6. SEO / Yoast requirements for the "description" HTML:
    a. Keyphrase in introduction: the FIRST <p> paragraph must contain the Focus Keyphrase.
-   b. Keyphrase distribution: the Focus Keyphrase (or a close synonym) must appear naturally
-      across the introduction, the middle of the content, AND the closing section -- not
-      clustered in one spot.
+   b. Keyphrase distribution: weave the Focus Keyphrase or one of the "keyphrase_synonyms" into
+      EVERY paragraph of the body, not just the introduction, one middle paragraph, and the
+      closing section. No stretch of more than about 3 consecutive sentences should pass without
+      a mention of the keyphrase or a synonym -- mentions must be spread evenly across the whole
+      piece, never clustered together and never leaving a long gap.
    c. Keyphrase density: the Focus Keyphrase should appear roughly 0.5%-3% of total word count
       (for ~350 words, that's about 2-6 natural mentions). Do not keyword-stuff.
    d. Keyphrase in subheading: at least one <h2> or <h3> must contain the Focus Keyphrase.
@@ -57,4 +71,7 @@ STRICT CONSTRAINTS & FORMATTING RULES:
 
 7. Incorporate the Focus Keyphrase naturally into the "seo_title", "meta_description", "slug",
    and at least one <h2>/<h3> subheading -- not just the body text.
+
+8. If a Brand is given above (not empty), mention it naturally once in the description (e.g. in
+   the introduction), but never use it as the Focus Keyphrase substitute or force it in unnaturally.
 """

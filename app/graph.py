@@ -32,6 +32,7 @@ def writer_node(state: AgentState) -> Dict[str, Any]:
         specs=data["raw_specs"],
         focus_keyphrase=data.get("focus_keyphrase", "Auto-Derived Keyphrase"),
         sku=data.get("sku", ""),
+        brand=data.get("brand", "") or "",
         feedback_error=state.get("validation_error", ""),
         has_image=bool(data.get("image_url")),
         internal_link_url=internal_link_url
@@ -59,6 +60,8 @@ def validator_node(state: AgentState) -> Dict[str, Any]:
     meta_description = str(generated.get("meta_description", ""))
     slug = str(generated.get("slug", ""))
     image_alt = str(generated.get("image_alt", ""))
+    synonyms = [str(s).strip() for s in (generated.get("keyphrase_synonyms") or []) if str(s).strip()]
+    attributes = generated.get("attributes") or []
     keyphrase = str(input_data.get("focus_keyphrase", "")).strip()
     kp_lower = keyphrase.lower()
     has_image = bool(input_data.get("image_url"))
@@ -88,23 +91,43 @@ def validator_node(state: AgentState) -> Dict[str, Any]:
         return {"validation_passed": False, "validation_error": " | ".join(errors)}
 
     kp_pattern = re.compile(re.escape(keyphrase), re.IGNORECASE)
+    kp_or_synonym_pattern = re.compile(
+        "|".join(re.escape(t) for t in [keyphrase, *synonyms] if t), re.IGNORECASE
+    ) if keyphrase else None
 
     # --- Keyphrase in introduction ---
     paragraphs = [p.get_text(separator=" ", strip=True) for p in soup.find_all("p")]
     if not paragraphs or not kp_pattern.search(paragraphs[0]):
         errors.append(f"Keyphrase in introduction: the opening paragraph must contain the focus keyphrase '{keyphrase}'.")
 
-    # --- Keyphrase distribution: not clustered in one spot ---
-    if word_count > 0:
-        third = max(word_count // 3, 1)
-        chunks = [
-            " ".join(words[0:third]),
-            " ".join(words[third:2 * third]),
-            " ".join(words[2 * third:]),
-        ]
-        hits = sum(1 for c in chunks if kp_pattern.search(c))
-        if hits < 2:
-            errors.append("Keyphrase distribution: the focus keyphrase must appear spread across the introduction, middle, and closing sections, not clustered in one spot.")
+    # --- Keyphrase distribution: no oversized gap between mentions ---
+    # Mirrors Yoast's real distribution check (which credits the keyphrase and
+    # its synonyms) by looking at gaps between sentence-level hits, rather than
+    # just requiring presence in 2 of 3 coarse thirds -- a check that could
+    # still pass while leaving an entire half of the text without a mention.
+    if kp_or_synonym_pattern and text:
+        sentences = [s for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+        n_sentences = len(sentences)
+        if n_sentences > 0:
+            hit_indices = [i for i, s in enumerate(sentences) if kp_or_synonym_pattern.search(s)]
+            if not hit_indices:
+                errors.append(
+                    f"Keyphrase distribution: the focus keyphrase '{keyphrase}' (or a synonym) does not appear in the body text at all."
+                )
+            else:
+                gaps = (
+                    [hit_indices[0]]
+                    + [b - a for a, b in zip(hit_indices, hit_indices[1:])]
+                    + [(n_sentences - 1) - hit_indices[-1]]
+                )
+                max_allowed_gap = max(round(n_sentences * 0.35), 3)
+                largest_gap = max(gaps)
+                if largest_gap > max_allowed_gap:
+                    errors.append(
+                        f"Keyphrase distribution: uneven. There is a stretch of {largest_gap} sentences in a row "
+                        f"without the focus keyphrase or a synonym. Distribute mentions of the keyphrase or its "
+                        f"synonyms more evenly across the whole text (no gap larger than ~{max_allowed_gap} sentences)."
+                    )
 
     # --- Keyphrase density ---
     occurrences = len(kp_pattern.findall(text))
@@ -150,6 +173,14 @@ def validator_node(state: AgentState) -> Dict[str, Any]:
         if not image_alt or kp_lower not in image_alt.lower():
             errors.append(f"Keyphrase in image alt attributes: image_alt must contain the focus keyphrase '{keyphrase}'.")
 
+    # --- Product attributes: structured specs must be parsed out of raw_specs ---
+    raw_specs = str(input_data.get("raw_specs", ""))
+    if len(raw_specs.strip()) > 40 and len(attributes) < 2:
+        errors.append(
+            "Product attributes: extract at least 2 structured attributes (e.g. Material, "
+            "Dimensions, Finish) from the raw specifications into the 'attributes' field."
+        )
+
     # --- Internal links ---
     links = soup.find_all("a")
     site_host = settings.WC_URL.split("//")[-1].replace("www.", "")
@@ -183,12 +214,14 @@ def publisher_node(state: AgentState) -> Dict[str, Any]:
         meta_description = str(raw_desc.get("meta_description", ""))
         slug = str(raw_desc.get("slug", ""))
         image_alt = str(raw_desc.get("image_alt", ""))
+        attributes = raw_desc.get("attributes") or []
         gen_sku = raw_desc.get("sku")
         if gen_sku and isinstance(input_data, dict) and not input_data.get("sku"):
             input_data["sku"] = gen_sku
     else:
         desc_text = str(raw_desc)
         seo_title = meta_description = slug = image_alt = ""
+        attributes = []
 
     product_name = input_data.get("product_name", "") if isinstance(input_data, dict) else ""
     price = input_data.get("price") if isinstance(input_data, dict) else None
@@ -198,6 +231,7 @@ def publisher_node(state: AgentState) -> Dict[str, Any]:
     image_url = input_data.get("image_url") if isinstance(input_data, dict) else None
     gallery_images = input_data.get("gallery_images") if isinstance(input_data, dict) else None
     focus_keyphrase = input_data.get("focus_keyphrase", "") if isinstance(input_data, dict) else ""
+    brand = input_data.get("brand", "") if isinstance(input_data, dict) else ""
 
     images = []
     if image_url:
@@ -215,7 +249,9 @@ def publisher_node(state: AgentState) -> Dict[str, Any]:
         slug=slug,
         seo_title=seo_title,
         meta_description=meta_description,
-        focus_keyphrase=focus_keyphrase
+        focus_keyphrase=focus_keyphrase,
+        brand=brand or "",
+        attributes=attributes
     )
 
     if focus_keyphrase:

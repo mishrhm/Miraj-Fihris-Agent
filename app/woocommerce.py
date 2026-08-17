@@ -1,4 +1,5 @@
 import re
+import time
 from typing import Optional, Any
 
 import requests
@@ -15,6 +16,92 @@ BROWSER_HEADERS = {
 _AUTH_PARAMS = {"consumer_key": settings.WC_CK, "consumer_secret": settings.WC_CS}
 
 _CANONICAL_RE = re.compile(r'rel="canonical"\s+href="([^"]+)"')
+
+CATEGORY_CACHE_TTL_SECONDS = 300
+_category_cache: dict[str, Any] = {"data": None, "fetched_at": 0.0}
+
+
+def list_categories(force_refresh: bool = False) -> list[dict[str, Any]]:
+    """Fetch all WooCommerce product categories, cached briefly so a page
+    load doesn't force a live round-trip every time -- categories change
+    rarely, and this is called on every /upload page load."""
+    now = time.time()
+    if (
+        not force_refresh
+        and _category_cache["data"] is not None
+        and now - _category_cache["fetched_at"] < CATEGORY_CACHE_TTL_SECONDS
+    ):
+        return _category_cache["data"]
+
+    categories: list[dict[str, Any]] = []
+    for page in range(1, 51):  # sanity cap against an unexpected API change
+        res = requests.get(
+            f"{settings.WC_URL}/wp-json/wc/v3/products/categories",
+            params={**_AUTH_PARAMS, "per_page": 100, "page": page, "orderby": "name", "order": "asc"},
+            headers=BROWSER_HEADERS,
+            timeout=15,
+        )
+        if res.status_code != 200:
+            raise RuntimeError(f"WooCommerce category list failed: {res.text}")
+
+        batch = res.json()
+        if not batch:
+            break
+
+        categories.extend(
+            {"id": c["id"], "name": c["name"], "slug": c["slug"], "parent": c["parent"]}
+            for c in batch
+        )
+
+    _category_cache["data"] = categories
+    _category_cache["fetched_at"] = now
+    return categories
+
+
+def get_or_create_brand(name: str) -> Optional[int]:
+    """Look up a WooCommerce brand term by name (case-insensitive), creating
+    it if it doesn't exist yet. WooCommerce core only ships the `/products/brands`
+    endpoint on newer versions (or via the WooCommerce Brands plugin); if the
+    endpoint isn't available on this store, this returns None so the caller
+    can skip attaching a brand instead of failing the whole publish."""
+    brand_name = name.strip()
+    if not brand_name:
+        return None
+
+    endpoint = f"{settings.WC_URL}/wp-json/wc/v3/products/brands"
+
+    try:
+        res = requests.get(
+            endpoint,
+            params={**_AUTH_PARAMS, "search": brand_name, "per_page": 100},
+            headers=BROWSER_HEADERS,
+            timeout=15,
+        )
+    except requests.RequestException:
+        return None
+
+    if res.status_code == 404:
+        return None
+    if res.status_code != 200:
+        raise RuntimeError(f"WooCommerce brand lookup failed: {res.text}")
+
+    for term in res.json():
+        if str(term.get("name", "")).strip().lower() == brand_name.lower():
+            return term.get("id")
+
+    create_res = requests.post(
+        endpoint,
+        params=_AUTH_PARAMS,
+        json={"name": brand_name},
+        headers=BROWSER_HEADERS,
+        timeout=15,
+    )
+    if create_res.status_code == 404:
+        return None
+    if create_res.status_code not in (200, 201):
+        raise RuntimeError(f"WooCommerce brand creation failed: {create_res.text}")
+
+    return create_res.json().get("id")
 
 
 def get_category_permalink(category_id: int) -> Optional[str]:
@@ -81,6 +168,8 @@ def publish_to_woocommerce(
     seo_title: str = "",
     meta_description: str = "",
     focus_keyphrase: str = "",
+    brand: str = "",
+    attributes: Optional[list[dict[str, str]]] = None,
 ) -> dict[str, Any]:
     endpoint = f"{settings.WC_URL}/wp-json/wc/v3/products/"
 
@@ -115,6 +204,24 @@ def publish_to_woocommerce(
 
     if images:
         payload["images"] = images
+
+    if attributes:
+        payload["attributes"] = [
+            {
+                "name": str(attr.get("name", "")).strip(),
+                "options": [str(attr.get("value", "")).strip()],
+                "visible": True,
+                "variation": False,
+                "position": i,
+            }
+            for i, attr in enumerate(attributes)
+            if str(attr.get("name", "")).strip() and str(attr.get("value", "")).strip()
+        ]
+
+    if brand and brand.strip():
+        brand_id = get_or_create_brand(brand)
+        if brand_id:
+            payload["brands"] = [{"id": brand_id}]
 
     # Yoast SEO reads its fields straight out of post meta; the WooCommerce
     # product meta_data channel passes protected "_" keys through untouched.
