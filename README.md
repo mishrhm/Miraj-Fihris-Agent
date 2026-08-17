@@ -2,195 +2,141 @@
 
 ## WooCommerce AI Copywriter & SEO Agent
 
-An autonomous, self-healing AI agent microservice built with **Python**, **LangGraph**, **Google AI Studio (Gemini 2.5 Flash)**, and **FastAPI**.
+An autonomous, self-healing AI agent microservice built with **Python**,
+**LangGraph**, **Google Gemini**, and **FastAPI** for **MAAT** (maat.ae).
 
-This agent automates the creation of 100% compliant, high-converting, SEO-optimized e-commerce product descriptions and directly publishes them to **WooCommerce** via REST API.
+Given raw product facts, it writes SEO-optimized HTML product copy, validates it
+against ~15 Yoast-SEO-style rules with an automatic retry/correction loop,
+uploads product images to the WordPress media library, and publishes the
+finished listing straight to WooCommerce.
+
+**Full documentation lives in [`docs/`](docs/README.md)** — start there for
+architecture, setup, the API reference, and the history of every non-obvious
+workaround this codebase relies on. This README is a quick-start only.
 
 ---
 
 ## 🌟 Key Features
 
-- **Autonomous Copy Generation:** Uses Google's `gemini-2.5-flash` to craft technical product descriptions (~350 words) with structured headings.
-- **Deterministic Validation Loop:** Enforces strict business logic using a **LangGraph State Machine**:
-  - ❌ _No LaTeX formatting_ (forces clean plain-text dimensions like `10 cm x 10 cm`).
-  - ❌ _Forbidden phrase filtering_ (e.g., automatically rejects "New arrival").
-  - 📏 _Word count verification_ (ensures deep SEO content density).
-  - 🔄 _Self-Healing Feedback Loop_ (if validation fails, feedback is routed back to Gemini for correction before publishing).
-- **Automated WooCommerce Publishing:** Directly posts validated product copy, categories, prices, and media to WordPress via WooCommerce REST API.
-- **FastAPI Microservice:** Exposes a clean REST API endpoint ready for webhooks, automation scripts, or web app integrations.
+- **Autonomous copy generation** — Gemini writes clean semantic HTML (not
+  Markdown) product descriptions (~350 words) with SEO title, meta description,
+  slug, and image alt text.
+- **Self-healing SEO validation loop** — a LangGraph state machine checks the
+  generated copy against ~15 rules (keyphrase placement, density, internal/
+  external links, meta description length, etc.) and feeds specific corrections
+  back to Gemini for up to 5 attempts before giving up.
+- **Real, live-checked links** — internal links point at the product's actual
+  WooCommerce category page (resolved via the API, not guessed); outbound links
+  are live-verified before publishing so nothing ships broken.
+- **Image handling** — accepts either an already-hosted `image_url` or local
+  `image_paths`, which get uploaded to the WordPress media library
+  automatically.
+- **Enquiry-model friendly** — `price` is optional; omitting it publishes a
+  normal listing with no price shown, matching how MAAT actually catalogs some
+  products.
+- **Automated WooCommerce publishing** — posts validated copy, categories,
+  images, and Yoast SEO meta fields via the WooCommerce REST API.
 
 ---
 
-## 🏗️ Architecture Flow
+## 🏗️ Architecture (short version)
 
 ```text
-[ Client POST Request ]
-          │
-          ▼
-┌────────────────────────────────────────────────────────┐
-│                   FastAPI Endpoint                     │
-│               /api/v1/publish-product                  │
-└─────────────────────────┬──────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│                LangGraph State Machine                 │
-│                                                        │
-│   ┌──────────────┐             ┌──────────────────┐    │
-│   │ Writer Node  │────────────►│  Validator Node  │    │
-│   │ (Gemini 2.5) │◄────────────┤  (Python Check)  │    │
-│   └──────────────┘ Retry Feedback└────────┬──────────┘ │
-│                                            │ Passed    │
-│                                            ▼           │
-│                        ┌──────────────────────────┐    │
-│                        │      Publisher Node      │    │
-│                        │   (WooCommerce API)      │    │
-│                        └──────────────────────────┘    │
-└─────────────────────────────────┬──────────────────────┘
-                                   │
-                                   ▼
-                      [ Live Product Published ]
+POST /api/v1/publish-product
+        │
+        ▼
+  pre-flight checks (keyphrase length / reuse) + one-time image upload
+        │
+        ▼
+  writer (Gemini) ⇄ validator (~15 SEO rules)   [retries up to 5x]
+        │ passes
+        ▼
+  publisher → WooCommerce (live, published product)
 ```
+
+Full diagram and module-by-module breakdown: [`docs/PROJECT.md`](docs/PROJECT.md).
 
 ---
 
-## Project Directory Layout
+## 🚀 Quick Start
+
+```bash
+git clone <this repo>
+cd Miraj-Fihris-Agent
+
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+cp .env.example .env           # then fill in your credentials
+python main.py
+```
+
+Runs at `http://localhost:8000` (Swagger UI at `/docs`).
+
+**Before your first real request:** [`docs/SETUP.md`](docs/SETUP.md) has the
+full credential setup (including the WordPress Application Password needed for
+image uploads, which is *not* the same credential as the WooCommerce keys) and
+a set of side-effect-free checks to verify everything is wired up correctly.
+
+⚠️ **There is no draft/dry-run mode** — a successful request publishes a real,
+live product immediately. See [`docs/AGENTS.md`](docs/AGENTS.md) if you (or an
+AI agent) are testing changes against a production store.
 
 ---
 
+## 📬 API
+
+One endpoint: `POST /api/v1/publish-product`. Full field-by-field reference,
+example requests, and error codes: [`docs/API.md`](docs/API.md).
+
+```json
+{
+  "product_name": "MAAT FD15-02 Stainless Steel Floor Drain 15x15cm",
+  "raw_specs": "Material: Stainless Steel; Shape: Square Deck 15cm x 15cm; ...",
+  "category_id": 506,
+  "additional_category_ids": [481],
+  "focus_keyphrase": "Stainless Steel Floor Drain",
+  "sku": "FD15-02",
+  "image_paths": ["/absolute/path/to/photo.jpeg"]
+}
 ```
-miraj-fihris-agent/
-├── app/
-│   ├── __init__.py
-│   ├── config.py          # Environment variables & setup
-│   ├── graph.py           # LangGraph state workflow & nodes
-│   ├── gemini.py          # Google AI Studio SDK client
-│   ├── woocommerce.py     # WooCommerce REST API integration
-│   └── schemas.py         # Pydantic models & state types
-├── main.py                # FastAPI entry point
-├── .env.example           # Template for environment variables
-├── .gitignore             # Git ignore file
-├── requirements.txt       # Project dependencies
-├── LICENSE                # MIT License
-└── README.md              # Project documentation
+
+```json
+{
+  "status": "success",
+  "wordpress_product_id": 26474,
+  "wordpress_product_url": "https://maat.ae/product/maat-fd15-02-stainless-steel-floor-drain/",
+  "generated_description": "<p>...</p>",
+  "sku": "FD15-02",
+  "seo_title": "Stainless Steel Floor Drain - MAAT FD15-02",
+  "meta_description": "...",
+  "slug": "maat-fd15-02-stainless-steel-floor-drain"
+}
 ```
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Language:** Python 3.10+
-- **Framework:** FastAPI
-- **AI & Orchestration:** LangGraph, Google GenAI SDK (gemini-2.5-flash)
-- **E-Commerce Integration:** WooCommerce REST API
-- **Data Validation:** Pydantic
+Python · FastAPI · LangGraph · Google Gemini (`google-genai`) · BeautifulSoup4 ·
+Pydantic · WooCommerce REST API · WordPress REST API
 
 ---
 
-## 🚀 Getting Started
+## 📚 Documentation
 
-### 1. Prerequisites
-
-- Python 3.10 or higher
-- Google AI Studio API Key ([Get one here](https://aistudio.google.com/))
-- WooCommerce REST API Consumer Key & Secret ([Generate here](https://woocommerce.com/document/woocommerce-rest-api/))
-
-### 2. Installation
-
-Clone the repository and set up a virtual environment:
-
-```bash
-git clone https://github.com/mishrhm/miraj-woocom-agent.git
-cd MIRAJ-wc-ai-agent
-
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# On Linux/macOS:
-source venv/bin/activate
-# On Windows:
-# venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 3. Environment Configuration
-
-Copy `.env.example` to `.env` and fill in your API credentials:
-
-```bash
-cp .env.example .env
-```
-
-Set the variables in `.env`:
-
-```env
-GEMINI_API_KEY=your_google_ai_studio_api_key
-WC_URL=https://www.MIRAJ.ae
-WC_CK=ck_your_woocommerce_consumer_key
-WC_CS=cs_your_woocommerce_consumer_secret
-```
-
----
-
-## 🚦 Running the Application
-
-Start the FastAPI microservice locally:
-
-```bash
-python main.py
-```
-
-The API will run at `http://localhost:8000`. You can access the interactive API documentation (Swagger UI) at `http://localhost:8000/docs`.
-
----
-
-## 📬 API Endpoint Usage
-
-### `POST /api/v1/publish-product`
-
-**Request Payload Example:**
-
-```json
-{
-  "product_name": "MIRAJ Commercial Grade Floor Drain 10 cm x 10 cm",
-  "raw_specs": "Material: Grade 304 Stainless Steel, Finish: Satin, Outlet size: 50mm, Includes odor and pest trap.",
-  "category_id": 15,
-  "price": "85.00",
-  "image_url": "https://example.com/images/floor-drain.jpg",
-  "focus_keyphrase": "Stainless Steel Floor Drain 10 cm x 10 cm"
-}
-```
-
-**Response Example:**
-
-```json
-{
-  "status": "success",
-  "wordpress_product_id": 1042,
-  "wordpress_product_url": "https://www.MIRAJ.ae/product/MIRAJ-commercial-grade-floor-drain/",
-  "generated_description": "## MIRAJ Commercial Grade Floor Drain..."
-}
-```
-
----
-
-## 🧪 Self-Healing Logic in Action
-
-If Gemini generates text containing LaTeX (`$10\text{ cm}$`) or includes the phrase "New arrival", the Validator Node catches it, blocks WooCommerce publishing, and re-invokes the Writer Node with explicit error correction instructions until all business constraints pass.
+| | |
+|---|---|
+| [`docs/PROJECT.md`](docs/PROJECT.md) | Architecture, modules, the full SEO rule set |
+| [`docs/SETUP.md`](docs/SETUP.md) | Install, credentials, running, safe verification steps |
+| [`docs/API.md`](docs/API.md) | Endpoint reference, examples, error codes |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Why the code is shaped this way — every workaround and the incident behind it |
+| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | Symptom → cause → fix |
+| [`docs/AGENTS.md`](docs/AGENTS.md) | Rules for AI coding agents working in this repo |
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-## 📋 Next Step in our Step-by-Step Plan
-
-Now that we have the **Roadmap** and **`README.md`** established:
-
-**Step 1:** We will set up your local project directory, create `.env.example`, `.gitignore`, and `requirements.txt`.
+MIT — see [License.md](License.md).

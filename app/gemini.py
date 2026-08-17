@@ -17,14 +17,23 @@ MODELS_TO_TRY = [
 ]
 
 def generate_product_copy(
-    name: str, 
-    specs: str, 
-    focus_keyphrase: str, 
-    sku: str = "", 
-    feedback_error: str = ""
+    name: str,
+    specs: str,
+    focus_keyphrase: str,
+    sku: str = "",
+    feedback_error: str = "",
+    has_image: bool = False,
+    internal_link_url: str = ""
 ) -> Dict[str, str]:
-    prompt = PROMPT_TEMPLATE.format(name=name, specs=specs, fk=focus_keyphrase, sku=sku or "None")
-    
+    prompt = PROMPT_TEMPLATE.format(
+        name=name,
+        specs=specs,
+        fk=focus_keyphrase,
+        sku=sku or "None",
+        has_image=has_image,
+        internal_link_url=internal_link_url or "https://maat.ae/"
+    )
+
     if feedback_error:
         prompt += f"\n\nCRITICAL FIX REQUIRED FROM PREVIOUS ATTEMPT:\n{feedback_error}"
 
@@ -48,14 +57,22 @@ def generate_product_copy(
                     data = json.loads(raw_text)
                     return {
                         "sku": data.get("sku", "").strip(),
-                        "description": data.get("description", "").strip()
+                        "description": data.get("description", "").strip(),
+                        "seo_title": data.get("seo_title", "").strip(),
+                        "meta_description": data.get("meta_description", "").strip(),
+                        "slug": data.get("slug", "").strip(),
+                        "image_alt": data.get("image_alt", "").strip()
                     }
                 except json.JSONDecodeError:
                     # Fallback parsing if output isn't strict JSON
                     fallback_sku = sku or f"MAAT-{name.replace(' ', '-').upper()[:15]}"
                     return {
                         "sku": fallback_sku,
-                        "description": raw_text
+                        "description": raw_text,
+                        "seo_title": "",
+                        "meta_description": "",
+                        "slug": "",
+                        "image_alt": ""
                     }
 
             except APIError as e:

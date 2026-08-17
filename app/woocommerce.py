@@ -1,15 +1,86 @@
+import re
 from typing import Optional, Any
 
 import requests
 from app.config import settings
 
+# Server runs ModSecurity, which blocks the default python-requests
+# User-Agent with a 406 Not Acceptable. Spoof a browser UA to get through.
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+}
+
+_AUTH_PARAMS = {"consumer_key": settings.WC_CK, "consumer_secret": settings.WC_CS}
+
+_CANONICAL_RE = re.compile(r'rel="canonical"\s+href="([^"]+)"')
+
+
+def get_category_permalink(category_id: int) -> Optional[str]:
+    """Look up the real, live archive URL for a product category (used as an
+    internal link target). Falls back to the default WooCommerce category
+    permalink structure if the canonical URL can't be parsed out of Yoast's
+    head markup."""
+    if not category_id or category_id <= 0:
+        return None
+
+    endpoint = f"{settings.WC_URL}/wp-json/wc/v3/products/categories/{category_id}"
+    try:
+        res = requests.get(
+            endpoint,
+            params=_AUTH_PARAMS,
+            headers=BROWSER_HEADERS,
+            timeout=15,
+        )
+    except requests.RequestException:
+        return None
+
+    if res.status_code != 200:
+        return None
+
+    data = res.json()
+
+    yoast_head = data.get("yoast_head", "")
+    match = _CANONICAL_RE.search(yoast_head)
+    if match:
+        return match.group(1)
+
+    slug = data.get("slug")
+    if slug:
+        return f"{settings.WC_URL}/product-category/{slug}/"
+
+    return None
+
+
+def url_is_reachable(url: str) -> bool:
+    """Live-check that a link the agent wants to publish actually resolves,
+    so we never ship a broken internal/external link."""
+    try:
+        res = requests.head(
+            url, headers=BROWSER_HEADERS, timeout=10, allow_redirects=True
+        )
+        if res.status_code == 405:  # some servers reject HEAD; retry with GET
+            res = requests.get(
+                url, headers=BROWSER_HEADERS, timeout=10, allow_redirects=True
+            )
+        return res.status_code < 400
+    except requests.RequestException:
+        return False
+
+
 def publish_to_woocommerce(
-    product_name: str, 
-    description: str | dict, 
-    price: str, 
-    category_id: int, 
+    product_name: str,
+    description: str | dict,
+    price: Optional[str],
+    category_id: int,
     sku: str,
-    image_url: Optional[str] = None
+    images: Optional[list[dict[str, str]]] = None,
+    additional_category_ids: Optional[list[int]] = None,
+    slug: str = "",
+    seo_title: str = "",
+    meta_description: str = "",
+    focus_keyphrase: str = "",
 ) -> dict[str, Any]:
     endpoint = f"{settings.WC_URL}/wp-json/wc/v3/products/"
 
@@ -19,7 +90,7 @@ def publish_to_woocommerce(
     else:
         clean_description = str(description)
 
-    clean_price = str(price).replace("$", "").strip()
+    clean_price = str(price).replace("$", "").strip() if price else ""
 
     # Explicitly annotate dict[str, Any] to allow list/dict payloads
     payload: dict[str, Any] = {
@@ -27,31 +98,43 @@ def publish_to_woocommerce(
         "type": "simple",
         "status": "publish",
         "sku": str(sku),
-        "regular_price": clean_price,
         "description": clean_description,
     }
 
+    # Enquiry-only listings (no e-commerce checkout) omit regular_price
+    # entirely rather than sending "0", which would show as free.
+    if clean_price:
+        payload["regular_price"] = clean_price
+
     if category_id and category_id > 0:
-        payload["categories"] = [{"id": category_id}]  # Pylance error resolved
+        category_ids = [category_id] + [c for c in (additional_category_ids or []) if c != category_id]
+        payload["categories"] = [{"id": cid} for cid in category_ids]
 
-    if image_url:
-        payload["images"] = [{"src": image_url}]        # Pylance error resolved
+    if slug:
+        payload["slug"] = slug
 
-    # Server runs ModSecurity, which blocks the default python-requests
-    # User-Agent with a 406 Not Acceptable. Spoof a browser UA to get through.
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    }
+    if images:
+        payload["images"] = images
+
+    # Yoast SEO reads its fields straight out of post meta; the WooCommerce
+    # product meta_data channel passes protected "_" keys through untouched.
+    meta_data = []
+    if focus_keyphrase:
+        meta_data.append({"key": "_yoast_wpseo_focuskw", "value": focus_keyphrase})
+    if meta_description:
+        meta_data.append({"key": "_yoast_wpseo_metadesc", "value": meta_description})
+    if seo_title:
+        meta_data.append({"key": "_yoast_wpseo_title", "value": seo_title})
+    if meta_data:
+        payload["meta_data"] = meta_data
 
     res = requests.post(
         endpoint,
-        params={"consumer_key": settings.WC_CK, "consumer_secret": settings.WC_CS},
+        params=_AUTH_PARAMS,
         json=payload,
-        headers=headers,
+        headers=BROWSER_HEADERS,
         timeout=20,
-        allow_redirects=False
+        allow_redirects=False,
     )
 
     if res.status_code in (301, 302):
