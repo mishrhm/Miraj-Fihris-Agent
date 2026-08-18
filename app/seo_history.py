@@ -20,6 +20,10 @@ def was_keyphrase_used(keyphrase: str) -> bool:
     return normalized in {k.lower() for k in _load()}
 
 
+def list_used_keyphrases() -> list[str]:
+    return _load()
+
+
 def record_keyphrase(keyphrase: str) -> None:
     normalized = keyphrase.strip()
     if not normalized:

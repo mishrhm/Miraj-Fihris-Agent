@@ -8,11 +8,59 @@ Health check.
 {"status": "active", "agent": "Miraj Fihris Agent", "organization": "MIRAJ Co."}
 ```
 
+## Frontend-support endpoints
+
+The browser form at `GET /upload` (`frontend/index.html`) is a thin client over
+this API. It doesn't call `/api/v1/publish-product` directly (see the form
+variant below) but it does depend on these two read-only endpoints:
+
+### `GET /api/v1/categories`
+
+Returns every WooCommerce product category, flat, ordered alphabetically by
+`orderby=name` from the WooCommerce API itself:
+
+```json
+{"categories": [{"id": 506, "name": "Bathroom Fittings", "slug": "bathroom-fittings", "parent": 481}, ...]}
+```
+
+The frontend (`frontend/js/categories.js::buildCategoryTree`) turns this flat
+list into a parent/child tree client-side — the primary category `<select>`
+and the "Additional categories" checkbox list are both built from that tree, so
+a category's children stay grouped under it instead of scattered alphabetically
+among unrelated top-level categories. `parent: 0` (or a `parent` id not present
+in the list) means a top-level category.
+
+### `GET /api/v1/keyphrase-history`
+
+Returns every focus keyphrase ever recorded, straight from
+`data/keyphrase_history.json` (`app/seo_history.py::list_used_keyphrases`):
+
+```json
+{"keyphrases": ["Stainless Steel Floor Drain", "SS Floor Drain 15x15cm", ...]}
+```
+
+The frontend fetches this once on page load and checks it client-side
+(`frontend/js/keyphrase.js`) while the user types a focus keyphrase, so a
+duplicate is flagged immediately instead of only after a failed publish. This
+is a convenience/UX layer only — `POST /api/v1/publish-product(-form)` still
+re-checks server-side (see Error responses below), so a stale/failed fetch on
+the client can't let a real duplicate through.
+
+---
+
 ## `POST /api/v1/publish-product`
 
 Generates SEO-validated product copy, uploads any local images, and publishes a
 **live, published** WooCommerce product. There is no draft/dry-run mode — see
 [AGENTS.md](AGENTS.md) before calling this against a production store.
+
+**Browser form variant:** `POST /api/v1/publish-product-form` is what
+`frontend/index.html` actually submits to — same pipeline and validation, but
+`multipart/form-data` instead of JSON, `product_photos` (real uploaded file
+bytes) instead of `image_paths` (server-local paths), and
+`additional_category_ids` sent as repeated form fields (one per checked
+checkbox) rather than a JSON array. Field names and validation rules are
+otherwise identical to the JSON body below.
 
 ### Request body (`ProductRequest`)
 
@@ -23,7 +71,7 @@ Generates SEO-validated product copy, uploads any local images, and publishes a
 | `category_id` | int | yes | Primary WooCommerce category ID |
 | `additional_category_ids` | int[] | no | Extra category IDs to tag alongside `category_id` (e.g. a parent category — see [DECISIONS.md #12](DECISIONS.md#12-multi-category-tagging)) |
 | `price` | string | no | Retail price in AED. **Omit for enquiry-only listings** — this store doesn't price every product (see [DECISIONS.md #11](DECISIONS.md#11-price-is-optional-omit-rather-than-send-0)) |
-| `focus_keyphrase` | string | yes | Primary SEO keyphrase. Keep to ≤4 words — checked pre-flight. Must not have been used on a prior product — also checked pre-flight (`data/keyphrase_history.json`) |
+| `focus_keyphrase` | string | yes | Primary SEO keyphrase. Keep to ≤4 words — checked pre-flight. Must not have been used on a prior product — also checked pre-flight (`data/keyphrase_history.json`). The browser form validates both rules live while typing via `GET /api/v1/keyphrase-history` (see above), but this endpoint enforces them regardless of caller. |
 | `image_url` | string | no | Direct URL to an already-hosted image. Ignored if `image_paths` is also given. |
 | `image_paths` | string[] | no | **Local file paths** to upload to the WP media library before publishing. First path = primary product image, rest = gallery. Takes priority over `image_url`. |
 | `sku` | string | no | Explicit SKU. If omitted, Gemini derives one (`MAAT-{...}` style). Also doubles as the product's model number and is published as-is into WooCommerce's `short_description` field (e.g. `"FD15-02"`). |

@@ -121,6 +121,18 @@ than debugging through a full live Gemini+WooCommerce round trip.
 
 ---
 
+### Frontend keeps running an old version of `main.js`/`categories.js`/etc. after a reload
+
+Should no longer happen — `main.py` sends `Cache-Control: no-store` on `/upload`
+and everything under `/upload-assets/*` specifically to prevent this. If you
+still see it, check the response headers (`curl -sI http://localhost:8000/upload-assets/js/<file>.js`)
+to confirm that middleware is actually running, and check the browser's dev
+tools Network tab isn't set to "Disable cache" being the *only* thing keeping
+it fresh (i.e. confirm it's fresh with dev tools closed too). Full story:
+[DECISIONS.md #16](DECISIONS.md#16-frontend-static-assets-served-with-cache-control-no-store).
+
+---
+
 ### I created test data on the live store while debugging
 
 It happens — image uploads and product creation both have real, immediate

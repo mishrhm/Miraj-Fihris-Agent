@@ -70,7 +70,7 @@ main.py returns ProductResponse, or an HTTPException (400/422/500)
 | `app/prompt.py` | The prompt template — the actual SEO/HTML rules taught to the model |
 | `app/woocommerce.py` | WooCommerce REST client: publish, category lookup, link reachability check |
 | `app/wordpress_media.py` | WordPress core REST client (separate auth) for uploading local images |
-| `app/seo_history.py` | Tracks which focus keyphrases have already been used (`data/keyphrase_history.json`) |
+| `app/seo_history.py` | Tracks which focus keyphrases have already been used (`data/keyphrase_history.json`); also serves the full list to the frontend via `GET /api/v1/keyphrase-history` for live duplicate warnings |
 | `app/schemas.py` | Pydantic request/response models + the `AgentState` TypedDict |
 | `app/config.py` | Loads all settings from `.env` |
 
@@ -139,6 +139,13 @@ fix on the next attempt:
 │   └── seo_history.py                 keyphrase-reuse tracking
 ├── data/
 │   └── keyphrase_history.json  used focus keyphrases (grows over time, committed)
+├── frontend/                 browser form for /upload — see API.md's
+│   ├── index.html               "Frontend-support endpoints" section
+│   └── js/
+│       ├── main.js               wires up the form, submits via FormData
+│       ├── categories.js          flat category list → parent/child tree UI
+│       ├── keyphrase.js           suggestion + live length/uniqueness check
+│       └── photo-validation.js    client-side photo dimension/size checks
 ├── docs/                      you are here
 ├── .env / .env.example
 └── requirements.txt

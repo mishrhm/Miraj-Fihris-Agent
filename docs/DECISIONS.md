@@ -251,3 +251,53 @@ FD15-02"` or `"SKU: FD15-02"`).
 **Why it matters:** if a future request adds a genuinely separate "model
 number" concept distinct from SKU, this mapping needs revisiting — right now
 they're treated as the same value on purpose.
+
+---
+
+## 15. `keyphrase_history.json` backfilled from production, not built up empty
+
+**Problem:** `was_keyphrase_used()` only had 2 entries to check against, despite
+the live store already carrying 1,324 products — each with a real Yoast focus
+keyphrase (`_yoast_wpseo_focuskw` meta) assigned outside this agent (via
+wp-admin, or before this agent existed). The uniqueness check was passing
+almost every keyphrase, including ones already in use on the live site.
+
+**Fix:** a one-time script paginated `GET /wp-json/wc/v3/products`
+(`status=any`, `per_page=100`) across all ~1,324 products, read each one's
+`_yoast_wpseo_focuskw` meta value, and merged the non-empty ones into
+`data/keyphrase_history.json` (case-insensitive de-dupe, existing 2 entries
+kept). Result: 879 unique keyphrases from 1,084 fetched — the gap means some
+live products already share an identical focus keyphrase, a pre-existing
+condition on the site, not something this agent introduced.
+
+**Why it matters:** don't be surprised the history file jumped from 2 to 879
+entries in one change — that's catching the file up to reality, not scope
+creep. There is no ongoing sync: if a product's focus keyphrase is set or
+changed directly in wp-admin/WordPress (bypassing this agent), the local
+history file will silently drift out of date again. Re-run the same backfill
+approach (`GET /api/v1/keyphrase-history` reads the file; nothing currently
+re-syncs it automatically) if that's ever suspected.
+
+---
+
+## 16. Frontend static assets served with `Cache-Control: no-store`
+
+**Symptom:** after editing `frontend/js/*.js`, a normal browser reload kept
+running the *previous* version of the script — new functions showed up as
+`undefined`/missing until a hard refresh.
+
+**Root cause:** `StaticFiles` (serving `/upload-assets`) sets `ETag` and
+`Last-Modified` but no `Cache-Control` header. Without an explicit directive,
+Chrome can apply heuristic freshness and skip revalidation entirely for a
+while, so a plain reload doesn't guarantee a fresh fetch even though the file
+on disk changed.
+
+**Fix:** `main.py` adds a small `@app.middleware("http")` that sets
+`Cache-Control: no-store` on the `/upload` page and everything under
+`/upload-assets/*`. Every load now always re-fetches from the server.
+
+**Why it matters:** this frontend is small and edited often during
+development; if this header gets dropped "for performance," stale-JS bugs will
+come back silently and look like real regressions instead of a caching
+artifact. There's no real performance cost worth trading here — this endpoint
+serves a handful of small internal-tool files, not public traffic.

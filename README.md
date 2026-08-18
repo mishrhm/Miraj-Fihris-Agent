@@ -36,6 +36,12 @@ workaround this codebase relies on. This README is a quick-start only.
   products.
 - **Automated WooCommerce publishing** — posts validated copy, categories,
   images, and Yoast SEO meta fields via the WooCommerce REST API.
+- **Browser upload form** (`/upload`) — a lightweight frontend over the same
+  pipeline: categories render as a parent/child checkbox tree matching the
+  store's real category structure, and the focus keyphrase is validated live
+  while typing (too-long, or already used on another product) with a red
+  indicator and a not-yet-used suggestion, instead of only failing after
+  submit.
 
 ---
 
@@ -72,7 +78,8 @@ cp .env.example .env           # then fill in your credentials
 python main.py
 ```
 
-Runs at `http://localhost:8000` (Swagger UI at `/docs`).
+Runs at `http://localhost:8000` — browser upload form at `/upload`, Swagger UI
+at `/docs`.
 
 **Before your first real request:** [`docs/SETUP.md`](docs/SETUP.md) has the
 full credential setup (including the WordPress Application Password needed for
@@ -87,8 +94,12 @@ AI agent) are testing changes against a production store.
 
 ## 📬 API
 
-One endpoint: `POST /api/v1/publish-product`. Full field-by-field reference,
-example requests, and error codes: [`docs/API.md`](docs/API.md).
+The core endpoint: `POST /api/v1/publish-product`. The `/upload` browser form
+submits to a `multipart/form-data` variant of the same pipeline
+(`POST /api/v1/publish-product-form`) and reads two small read-only endpoints
+(`GET /api/v1/categories`, `GET /api/v1/keyphrase-history`) to populate itself.
+Full field-by-field reference, example requests, and error codes:
+[`docs/API.md`](docs/API.md).
 
 ```json
 {
@@ -120,7 +131,8 @@ example requests, and error codes: [`docs/API.md`](docs/API.md).
 ## 🛠️ Tech Stack
 
 Python · FastAPI · LangGraph · Google Gemini (`google-genai`) · BeautifulSoup4 ·
-Pydantic · WooCommerce REST API · WordPress REST API
+Pydantic · WooCommerce REST API · WordPress REST API · vanilla JS + Tailwind
+(CDN) for the `/upload` frontend
 
 ---
 

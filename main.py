@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.schemas import ProductRequest, ProductResponse, AgentState
 from app.graph import fihris_agent
 from app.config import settings
-from app.seo_history import was_keyphrase_used
+from app.seo_history import was_keyphrase_used, list_used_keyphrases
 from app.wordpress_media import upload_media, upload_media_bytes
 from app.woocommerce import list_categories
 
@@ -25,6 +25,16 @@ _FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fronte
 _FRONTEND_INDEX = os.path.join(_FRONTEND_DIR, "index.html")
 app.mount("/upload-assets", StaticFiles(directory=_FRONTEND_DIR), name="upload-assets")
 
+@app.middleware("http")
+async def no_cache_frontend_assets(request, call_next):
+    # The frontend is small and iterated on often; without this, browsers
+    # can keep serving a stale cached JS/HTML file after a deploy since
+    # StaticFiles only sets ETag/Last-Modified, not Cache-Control.
+    response = await call_next(request)
+    if request.url.path == "/upload" or request.url.path.startswith("/upload-assets"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
 @app.get("/upload")
 def upload_page():
     return FileResponse(_FRONTEND_INDEX)
@@ -36,6 +46,10 @@ def get_categories():
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=f"Could not fetch WooCommerce categories: {e}")
     return {"categories": categories}
+
+@app.get("/api/v1/keyphrase-history")
+def get_keyphrase_history():
+    return {"keyphrases": list_used_keyphrases()}
 
 
 async def _run_publish_pipeline(
