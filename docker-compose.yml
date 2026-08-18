@@ -1,0 +1,22 @@
+services:
+  fihris-agent:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      # Pinned so the container always listens on 8000 internally,
+      # regardless of what PORT is set to in .env; only the host-side
+      # mapping above (via the shell's PORT) changes the published port.
+      - PORT=8000
+    volumes:
+      # Persists keyphrase_history.json across container restarts/rebuilds.
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/')\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

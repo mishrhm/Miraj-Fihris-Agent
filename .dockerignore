@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+venv
+env
+__pycache__
+**/__pycache__
+*.pyc
+.env
+.env.local
+.claude
+docs
+README.md
+License.md

@@ -90,6 +90,19 @@ a set of side-effect-free checks to verify everything is wired up correctly.
 live product immediately. See [`docs/AGENTS.md`](docs/AGENTS.md) if you (or an
 AI agent) are testing changes against a production store.
 
+### 🐳 Docker
+
+```bash
+cp .env.example .env           # then fill in your credentials
+docker compose up -d --build
+```
+
+Runs at `http://localhost:8000`, same as above. `data/` is bind-mounted into
+the container so `keyphrase_history.json` survives rebuilds/restarts. Change
+the published port with `PORT=9000 docker compose up -d --build` (the
+container always listens on 8000 internally; only the host-side mapping
+changes).
+
 ---
 
 ## 📬 API
