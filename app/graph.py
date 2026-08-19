@@ -185,16 +185,16 @@ def validator_node(state: AgentState) -> Dict[str, Any]:
     links = soup.find_all("a")
     site_host = settings.WC_URL.split("//")[-1].replace("www.", "")
 
-    internal_links = [a for a in links if a.get("href") and (site_host in a.get("href") or a.get("href", "").startswith("/"))]
+    internal_links = [a for a in links if (href := str(a.get("href", ""))) and (site_host in href or href.startswith("/"))]
     if not internal_links:
         errors.append(f"Internal links: add one <a> link inside the description pointing to {internal_link_url}.")
 
     # --- Outbound (external) links ---
-    external_links = [a for a in links if a.get("href", "").startswith("http") and site_host not in a.get("href", "")]
+    external_links = [a for a in links if str(a.get("href", "")).startswith("http") and site_host not in str(a.get("href", ""))]
     if not external_links:
         errors.append("Outbound links: add one <a> link to a real, well-known external reference (e.g. a Wikipedia article on a material/spec term used in this product).")
     else:
-        href = external_links[0].get("href")
+        href = str(external_links[0].get("href", ""))
         if not url_is_reachable(href):
             errors.append(f"Outbound link '{href}' does not resolve. Use a real, well-known Wikipedia article title instead of an invented/obscure one.")
 
