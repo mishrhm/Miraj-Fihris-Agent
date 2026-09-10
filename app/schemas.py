@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, NotRequired
 
 
 class ProductRequest(BaseModel):
@@ -52,3 +52,5 @@ class AgentState(TypedDict):
     wordpress_product_url: Optional[str]
     internal_link_url: Optional[str]
     writer_attempts: int
+    category_name: NotRequired[str]
+    product_division: NotRequired[str]

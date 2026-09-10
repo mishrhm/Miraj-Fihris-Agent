@@ -58,6 +58,35 @@ def list_categories(force_refresh: bool = False) -> list[dict[str, Any]]:
     return categories
 
 
+def get_category_context(category_id: int) -> tuple[str, str]:
+    """Resolve a WooCommerce category ID to (category_name, product_division),
+    where product_division is one of MAAT's two top-level business lines --
+    "Electricals" if the category's root ancestor is the Electricals tree,
+    otherwise "Sanitary Wares" (the default division). Used to build the
+    meta description pattern "{Focus Keyphrase} - {Category} | MAAT ({Division})"."""
+    if not category_id or category_id <= 0:
+        return "", "Sanitary Wares"
+
+    try:
+        categories = list_categories()
+    except RuntimeError:
+        return "", "Sanitary Wares"
+
+    by_id = {c["id"]: c for c in categories}
+    category = by_id.get(category_id)
+    if not category:
+        return "", "Sanitary Wares"
+
+    root = category
+    seen = {category_id}
+    while root.get("parent") and root["parent"] in by_id and root["parent"] not in seen:
+        seen.add(root["parent"])
+        root = by_id[root["parent"]]
+
+    division = "Electricals" if "electric" in root["name"].lower() else "Sanitary Wares"
+    return category["name"], division
+
+
 def get_or_create_brand(name: str) -> Optional[int]:
     """Look up a WooCommerce brand term by name (case-insensitive), creating
     it if it doesn't exist yet. WooCommerce core only ships the `/products/brands`

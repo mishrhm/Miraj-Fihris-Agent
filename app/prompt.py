@@ -9,6 +9,8 @@ Provided SKU: {sku}
 Brand: {brand}
 Has Product Image: {has_image}
 Internal Link Target (a real, live page on maat.ae): {internal_link_url}
+Product Category: {category}
+Product Division (MAAT's business line for this category): {division}
 
 STRICT CONSTRAINTS & FORMATTING RULES:
 
@@ -23,8 +25,20 @@ STRICT CONSTRAINTS & FORMATTING RULES:
      Never use Markdown syntax (#, ##, **, -, etc.).
    - "seo_title": An SEO title for the product, starting with the exact Focus Keyphrase, under
      60 characters.
-   - "meta_description": A meta description between 120 and 156 characters that contains the
-     Focus Keyphrase.
+   - "meta_description": Must follow this exact pattern:
+     "{fk} - <short natural phrase mentioning the Category ("{category}") and a real product
+     benefit or spec> | MAAT" -- and append the Product Division in parentheses right after
+     "MAAT" ONLY if it still fits within the length limit: "... | MAAT ({division})".
+     Rules, in order:
+       1. The string MUST start with the exact Focus Keyphrase, followed by " - ".
+       2. The string MUST end with either "| MAAT" or "| MAAT ({division})" -- never any other
+          division name, and never anything after the division/MAAT.
+       3. The whole string MUST be between 120 and 156 characters (inclusive).
+       4. Prefer including " ({division})" at the end. Only drop it (ending with plain "| MAAT")
+          if including it would push the total length past 156 characters.
+       5. If dropping the division still leaves the string under 120 characters, lengthen the
+          descriptive phrase in the middle (between the Category mention and "| MAAT") with more
+          natural detail -- never pad the ending.
    - "slug": A lowercase, hyphenated URL slug that contains the Focus Keyphrase (e.g.
      "self-closing-timer-faucet-bpt-09").
    - "image_alt": Alt text for the product's main image containing the Focus Keyphrase or a

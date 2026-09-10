@@ -24,7 +24,9 @@ def generate_product_copy(
     brand: str = "",
     feedback_error: str = "",
     has_image: bool = False,
-    internal_link_url: str = ""
+    internal_link_url: str = "",
+    category_name: str = "",
+    product_division: str = "Sanitary Wares"
 ) -> Dict[str, Any]:
     prompt = PROMPT_TEMPLATE.format(
         name=name,
@@ -33,7 +35,9 @@ def generate_product_copy(
         sku=sku or "None",
         brand=brand or "None",
         has_image=has_image,
-        internal_link_url=internal_link_url or "https://maat.ae/"
+        internal_link_url=internal_link_url or "https://maat.ae/",
+        category=category_name or "the product category",
+        division=product_division
     )
 
     if feedback_error:

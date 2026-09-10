@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, END
 from app.config import settings
 from app.schemas import AgentState
 from app.gemini import generate_product_copy
-from app.woocommerce import publish_to_woocommerce, get_category_permalink, url_is_reachable
+from app.woocommerce import publish_to_woocommerce, get_category_permalink, get_category_context, url_is_reachable
 from app.seo_history import record_keyphrase
 
 MAX_WRITER_ATTEMPTS = 5
@@ -27,6 +27,8 @@ def writer_node(state: AgentState) -> Dict[str, Any]:
     if not internal_link_url:
         internal_link_url = get_category_permalink(data.get("category_id", 0)) or f"{settings.WC_URL}/"
 
+    category_name, product_division = get_category_context(data.get("category_id", 0))
+
     copy = generate_product_copy(
         name=data["product_name"],
         specs=data["raw_specs"],
@@ -35,7 +37,9 @@ def writer_node(state: AgentState) -> Dict[str, Any]:
         brand=data.get("brand", "") or "",
         feedback_error=state.get("validation_error", ""),
         has_image=bool(data.get("image_url")),
-        internal_link_url=internal_link_url
+        internal_link_url=internal_link_url,
+        category_name=category_name,
+        product_division=product_division
     )
 
     return {
@@ -43,6 +47,8 @@ def writer_node(state: AgentState) -> Dict[str, Any]:
         "validation_passed": False,
         "validation_error": "",
         "internal_link_url": internal_link_url,
+        "category_name": category_name,
+        "product_division": product_division,
         "writer_attempts": state.get("writer_attempts", 0) + 1
     }
 
@@ -65,6 +71,7 @@ def validator_node(state: AgentState) -> Dict[str, Any]:
     keyphrase = str(input_data.get("focus_keyphrase", "")).strip()
     kp_lower = keyphrase.lower()
     has_image = bool(input_data.get("image_url"))
+    product_division = state.get("product_division", "Sanitary Wares")
 
     errors = []
 
@@ -160,6 +167,24 @@ def validator_node(state: AgentState) -> Dict[str, Any]:
             errors.append(f"Keyphrase in meta description: meta_description must contain the focus keyphrase '{keyphrase}'.")
         if len(meta_description) < MIN_META_DESC_LEN or len(meta_description) > MAX_META_DESC_LEN:
             errors.append(f"Meta description length is {len(meta_description)} chars; must be between {MIN_META_DESC_LEN} and {MAX_META_DESC_LEN} characters.")
+
+        meta_stripped = meta_description.strip()
+        if keyphrase and not meta_stripped.lower().startswith(kp_lower):
+            errors.append(
+                f"Meta description pattern: meta_description must start with the focus keyphrase "
+                f"'{keyphrase}', e.g. '{keyphrase} - {{Category}} | MAAT ({product_division})'."
+            )
+        end_match = re.search(r"\|\s*MAAT(?:\s*\(\s*(Sanitary Wares|Electricals)\s*\))?\s*$", meta_stripped, re.IGNORECASE)
+        if not end_match:
+            errors.append(
+                f"Meta description pattern: meta_description must end with '| MAAT' or "
+                f"'| MAAT ({product_division})' (omit the parenthesis only if it would exceed {MAX_META_DESC_LEN} chars)."
+            )
+        elif end_match.group(1) and end_match.group(1).strip().lower() != product_division.lower():
+            errors.append(
+                f"Meta description pattern: the class shown in parentheses must be '{product_division}' "
+                f"for this product's category, not '{end_match.group(1).strip()}'."
+            )
 
     # --- Keyphrase in slug ---
     kp_slug = _slugify(keyphrase)
