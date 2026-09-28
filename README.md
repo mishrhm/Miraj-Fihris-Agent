@@ -47,6 +47,16 @@ workaround this codebase relies on. This README is a quick-start only.
 
 ## 🏗️ Architecture (short version)
 
+```graph TD
+    A[POST /publish-product] --> B[Pre-flight Validation]
+    B --> C[Upload Media to WP]
+    C --> D[LangGraph Writer Node: Gemini 2.5]
+    D --> E{LangGraph Validator: ~15 SEO Rules}
+    E -- Fails Rules -->|Feed Feedback / Max 5 Retries| D
+    E -- Passes Rules --> F[WooCommerce REST Publisher]
+    F --> G[Live WooCommerce Listing]
+```
+
 ```text
 POST /api/v1/publish-product
         │
